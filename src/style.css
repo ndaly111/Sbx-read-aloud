@@ -42,6 +42,12 @@ header .subtitle {
   color: var(--muted);
 }
 
+header .helper {
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .controls .field {
   margin-bottom: 18px;
   display: flex;

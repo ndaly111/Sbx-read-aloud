@@ -1,8 +1,11 @@
+const PIPER_MODULE_URL =
+  'https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/dist/index.mjs';
+
 let clientPromise = null;
 
 async function getClient() {
   if (!clientPromise) {
-    clientPromise = import('@mintplex-labs/piper-tts-web').then((mod) => {
+    clientPromise = import(PIPER_MODULE_URL).then((mod) => {
       if (typeof mod.predict !== 'function' || typeof mod.download !== 'function') {
         throw new Error('piper-tts-web API mismatch: missing predict()/download() exports');
       }
