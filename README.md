@@ -1,6 +1,6 @@
 # Voice Mode Sandbox
 
-A minimal sandbox for testing three playback modes: **Fastest** (Web Speech API), **Balanced**, and **Best** (neural voices via `@mintplex-labs/piper-tts-web`). The UI offers play/pause/resume/stop controls, download progress, and robust fallback handling.
+A minimal sandbox for testing three playback modes: **Fastest** (Web Speech API), **Balanced**, and **Best** (neural voices via `@mintplex-labs/piper-tts-web`). The UI offers play/pause/resume/stop controls, download progress, and robust fallback handling. The Piper dependency now streams directly from jsDelivr, so there is no private npm dependency blocking installs or deploys.
 
 ## Features
 - Textarea with sample text helper.
@@ -18,6 +18,22 @@ npm run dev
 ```
 
 Then open the printed local URL from Vite (usually http://localhost:5173).
+
+## Deploying
+This project builds to a static site you can host anywhere (GitHub Pages, Netlify, S3, etc.). The Vite base path is set to
+relative (`./`) so assets resolve even from subdirectories. At runtime the worker fetches the Piper engine from
+`https://cdn.jsdelivr.net`, so make sure outbound access to that CDN is allowed where you host.
+
+```bash
+npm run build
+# contents are emitted to dist/
+```
+
+Upload the `dist/` folder to your host or serve it with any static file server:
+
+```bash
+npm run preview
+```
 
 ## Quick test checklist
 - **Fastest**: pick a system voice, play text, verify pause/resume/stop.
