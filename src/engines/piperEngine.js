@@ -18,6 +18,8 @@ export default class PiperEngine {
     this.playToken = 0;
     this.currentVoiceId = null;
     this.suppressNextPauseEvent = false;
+    this._audioUnlocked = false;
+    this._suppressEvents = false;
   }
 
   on(event, cb) {
@@ -63,6 +65,10 @@ export default class PiperEngine {
     return this._post('voices');
   }
 
+  async getStoredVoices() {
+    return this._post('stored');
+  }
+
   async flush() {
     return this._post('flush');
   }
@@ -76,6 +82,7 @@ export default class PiperEngine {
         this.currentUrl = null;
         this.audio.src = '';
       }
+      if (this._suppressEvents) return;
       emit('ended');
     });
     this.audio.addEventListener('pause', () => {
@@ -84,17 +91,68 @@ export default class PiperEngine {
         this.suppressNextPauseEvent = false;
         return;
       }
+      if (this._suppressEvents) return;
       if (this.audio && this.audio.currentTime < (this.audio.duration || Infinity)) {
         emit('paused');
       }
     });
-    this.audio.addEventListener('play', () => emit('playing'));
+    this.audio.addEventListener('play', () => {
+      if (this._suppressEvents) return;
+      emit('playing');
+    });
+  }
+
+  _normalizeStoredVoiceIds(stored) {
+    if (Array.isArray(stored)) {
+      const ids = stored
+        .map((v) => {
+          if (typeof v === 'string') return v;
+          return v?.key || v?.id || v?.voiceId || null;
+        })
+        .filter(Boolean);
+      return new Set(ids);
+    }
+    if (stored && typeof stored === 'object') return new Set(Object.keys(stored));
+    return new Set();
+  }
+
+  async unlockAudio() {
+    this._ensureAudioElement();
+    if (!this.audio) return;
+    if (this._audioUnlocked) return;
+
+    // Tiny valid silent WAV (44-byte header + 1 sample). Some browsers reject a 0-length WAV.
+    const SILENT_WAV =
+      'data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQIAAAAAAA==';
+    const unlockSrc = SILENT_WAV;
+
+    // IMPORTANT: suppress Piper emits while doing the silent unlock so the UI
+    // doesn't flip to Playing/Paused/Ready during download/synthesis.
+    this._suppressEvents = true;
+    try {
+      this.audio.src = unlockSrc;
+      this.audio.muted = true;
+      await this.audio.play();
+      this.audio.pause();
+      this.audio.currentTime = 0;
+      this._audioUnlocked = true;
+    } catch (e) {
+      // Even if this fails, continue; playback may still be blocked until user retries.
+    } finally {
+      try {
+        this.audio.pause();
+        this.audio.currentTime = 0;
+      } catch {}
+      this.audio.muted = false;
+      if (this.audio.src === unlockSrc) this.audio.src = '';
+      this._suppressEvents = false;
+    }
   }
 
   async _downloadIfNeeded(voiceId, onProgress) {
     const stored = await this._post('stored');
-    const exists = (Array.isArray(stored) && stored.includes(voiceId)) || (!!stored && typeof stored === 'object' && voiceId in stored);
-    if (!exists) {
+    const storedSet = this._normalizeStoredVoiceIds(stored);
+    if (!storedSet.has(voiceId)) {
       await this._post('download', { voiceId }, onProgress);
     }
   }
@@ -148,7 +206,19 @@ export default class PiperEngine {
     this.audio.src = this.currentUrl;
     this.audio.playbackRate = rate;
     this.currentRate = rate;
-    await this.audio.play();
+    try {
+      await this.audio.play();
+    } catch (err) {
+      if (err?.name === 'NotAllowedError') {
+        // If Safari blocks playback, allow another unlock attempt next tap.
+        this._audioUnlocked = false;
+        const playbackError = new Error('Autoplay blocked: user gesture required');
+        playbackError.name = 'AutoplayBlockedError';
+        playbackError.code = 'autoplay-blocked';
+        throw playbackError;
+      }
+      throw err;
+    }
   }
 
   async play(text, { voiceId, fallbackVoiceId, mode, rate = 1, onProgress, token }) {
